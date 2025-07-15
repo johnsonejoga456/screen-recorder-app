@@ -6,4 +6,8 @@ module.exports = {
   ],
   theme: { extend: {} },
   plugins: [],
+<<<<<<< HEAD
 };
+=======
+};
+>>>>>>> 9c4bf377acfaf54c4935c5fb3f83636b63ec7e81
