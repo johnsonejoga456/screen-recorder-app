@@ -1,6 +1,4 @@
-<<<<<<< HEAD
 @import "tailwindcss";
-
 
 @tailwind base;
 @tailwind components;
@@ -30,8 +28,3 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
-=======
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
->>>>>>> 9c4bf377acfaf54c4935c5fb3f83636b63ec7e81

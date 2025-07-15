@@ -6,7 +6,6 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-<<<<<<< HEAD
     "lint": "next lint"
   },
   "dependencies": {
@@ -17,42 +16,19 @@
     "lucide-react": "^0.525.0",
     "next": "15.4.1",
     "react": "19.1.0",
-    "react-dom": "19.1.0"
-=======
-    "lint": "next lint",
-    "tailwind": "tailwindcss"
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.50.2",
-    "@tanstack/react-query": "^5.81.5",
-    "clsx": "^2.1.1",
-    "framer-motion": "^12.20.5",
-    "lucide-react": "^0.525.0",
-    "next": "15.3.4",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
->>>>>>> 9c4bf377acfaf54c4935c5fb3f83636b63ec7e81
+    "react-dom": "19.1.0",
+    "tailwindcss": "^4.1.11"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
-<<<<<<< HEAD
-    "@types/node": "^20.19.8",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
-    "eslint": "^9",
-    "eslint-config-next": "15.4.1",
-    "tailwindcss": "^4",
-=======
     "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
     "autoprefixer": "^10.4.21",
     "eslint": "^9",
-    "eslint-config-next": "15.3.4",
+    "eslint-config-next": "15.4.1",
     "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.11",
->>>>>>> 9c4bf377acfaf54c4935c5fb3f83636b63ec7e81
     "typescript": "^5"
   }
 }
