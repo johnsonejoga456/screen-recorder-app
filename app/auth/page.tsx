@@ -2,7 +2,7 @@
 import { supabase } from "@/lib/supabaseClient";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Mail, Lock } from "lucide-react"; // For modern icons
+import { Mail, Lock } from "lucide-react";
 
 export default function AuthPage() {
   const [email, setEmail] = useState("");

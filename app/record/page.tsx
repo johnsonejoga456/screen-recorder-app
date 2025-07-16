@@ -56,8 +56,7 @@ export default function RecordPage() {
         recordedChunks.current = [];
         return;
       }
-
-      // Get public URL
+        // Get public URL for the uploaded file
       const { data: publicUrlData } = supabase.storage
         .from("videos")
         .getPublicUrl(filename);
@@ -81,7 +80,7 @@ export default function RecordPage() {
       setUploading(false);
       recordedChunks.current = [];
 
-      router.push("/dashboard"); // Later we will build the dashboard
+      router.push("/dashboard");
     };
   };
 
