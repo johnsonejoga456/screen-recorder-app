@@ -34,8 +34,12 @@ export default function AuthPage() {
         if (error) throw error;
         router.push("/dashboard");
       }
-    } catch (err: any) {
-      setError(err.message || "An error occurred. Please try again.");
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("An unknown error occurred. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -55,7 +59,9 @@ export default function AuthPage() {
               {mode === "signin" ? "Welcome Back" : "Create Account"}
             </CardTitle>
             <p className="text-center text-sm text-gray-500 mt-2">
-              {mode === "signin" ? "Sign in to your account" : "Get started with a new account"}
+              {mode === "signin"
+                ? "Sign in to your account"
+                : "Get started with a new account"}
             </p>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -128,7 +134,6 @@ export default function AuthPage() {
                       className="text-sm text-blue-600 hover:underline"
                       onClick={(e) => {
                         e.preventDefault();
-                        // TODO: Implement forgot password logic
                         alert("Forgot password functionality coming soon!");
                       }}
                     >
@@ -154,13 +159,17 @@ export default function AuthPage() {
             </AnimatePresence>
 
             {error && (
-              <Alert variant={error.includes("Check your email") ? "default" : "destructive"}>
+              <Alert
+                variant={error.includes("Check your email") ? "default" : "destructive"}
+              >
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
 
             <p className="text-center text-sm text-gray-500">
-              {mode === "signin" ? "Don't have an account?" : "Already have an account?"}{" "}
+              {mode === "signin"
+                ? "Don't have an account?"
+                : "Already have an account?"}{" "}
               <button
                 onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
                 className="text-blue-600 hover:underline font-medium"
