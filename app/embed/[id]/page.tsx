@@ -1,14 +1,29 @@
 import { supabase } from "@/lib/supabaseClient";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 
-export default async function EmbedPage({
-  params,
-}: {
+interface EmbedPageProps {
   params: { id: string };
-}) {
+}
+
+export async function generateMetadata({
+  params,
+}: EmbedPageProps): Promise<Metadata> {
+  const { id } = params;
+  const { data: video } = await supabase
+    .from("videos")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  return {
+    title: video ? video.title : "Video not found",
+  };
+}
+
+export default async function EmbedPage({ params }: EmbedPageProps) {
   const { id } = params;
 
-  // Fetch the video record by ID
   const { data: video, error } = await supabase
     .from("videos")
     .select("*")
@@ -16,10 +31,10 @@ export default async function EmbedPage({
     .single();
 
   if (error || !video) {
-    return notFound();
+    notFound();
+    return null;
   }
 
-  // If video is private, do not show it via embed
   if (video.visibility === "private") {
     return (
       <div className="flex items-center justify-center h-screen">
