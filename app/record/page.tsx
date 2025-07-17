@@ -46,7 +46,7 @@ export default function RecordPage() {
       setUploading(true);
 
       // Upload to Supabase Storage
-      const { error: uploadError } = await supabase.storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
         .from("videos")
         .upload(filename, blob);
 
@@ -56,18 +56,22 @@ export default function RecordPage() {
         recordedChunks.current = [];
         return;
       }
-        // Get public URL for the uploaded file
+
+      // Get public URL
       const { data: publicUrlData } = supabase.storage
         .from("videos")
         .getPublicUrl(filename);
 
+      const fileUrl = publicUrlData.publicUrl;
+
       // Insert metadata into Supabase Database
-      const { error: dbError } = await supabase.from("videos").insert({
+      const { data: insertedData, error: dbError } = await supabase.from("videos").insert({
         user_id: user.id,
         title: filename,
-        file_url: publicUrlData.publicUrl,
+        file_url: fileUrl,
         visibility: "private",
-      });
+        processing_status: "processing", // mark as processing
+      }).select().single();
 
       if (dbError) {
         alert("Error saving video metadata: " + dbError.message);
@@ -76,7 +80,32 @@ export default function RecordPage() {
         return;
       }
 
-      alert("Upload successful!");
+      const videoId = insertedData.id;
+
+      // Trigger Supabase Edge Function for processing and email notification
+      const processResponse = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/process-video`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            video_id: videoId,
+            user_email: user.email,
+            file_url: fileUrl,
+          }),
+        }
+      );
+
+      if (!processResponse.ok) {
+        console.error(await processResponse.text());
+        alert("Upload completed, but processing trigger failed.");
+      } else {
+        alert("Upload and processing started successfully!");
+      }
+
       setUploading(false);
       recordedChunks.current = [];
 
@@ -122,7 +151,7 @@ export default function RecordPage() {
           onClick={stopRecording}
           className="px-4 py-2 bg-red-600 text-white rounded"
         >
-          Stop Recording
+          Stop Recording & Upload
         </button>
       )}
     </div>
