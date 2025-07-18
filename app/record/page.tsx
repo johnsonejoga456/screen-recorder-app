@@ -70,7 +70,7 @@ export default function RecordPage() {
         title: filename,
         file_url: fileUrl,
         visibility: "private",
-        processing_status: "processing", // mark as processing
+        processing_status: "processing",
       }).select().single();
 
       if (dbError) {
