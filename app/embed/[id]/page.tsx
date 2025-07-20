@@ -1,11 +1,29 @@
+
 import { supabase } from "@/lib/supabaseClient";
 import { notFound } from "next/navigation";
+import type { Metadata, NextPage } from "next";
 
-interface EmbedPageParams {
+// Define the props type for the dynamic route
+interface EmbedPageProps {
   params: { id: string };
 }
 
-export default async function EmbedPage({ params }: EmbedPageParams) {
+// Generate SEO metadata
+export async function generateMetadata({ params }: EmbedPageProps): Promise<Metadata> {
+  const { id } = params;
+  const { data: video } = await supabase
+    .from("videos")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  return {
+    title: video ? video.title : "Video not found",
+  };
+}
+
+// Main page component
+const EmbedPage: NextPage<EmbedPageProps> = async ({ params }) => {
   const { id } = params;
 
   const { data: video, error } = await supabase
@@ -16,7 +34,7 @@ export default async function EmbedPage({ params }: EmbedPageParams) {
 
   if (error || !video) {
     notFound();
-    return null; // Ensure the function returns something
+    return null; // Ensures type safety
   }
 
   if (video.visibility === "private") {
@@ -37,4 +55,6 @@ export default async function EmbedPage({ params }: EmbedPageParams) {
       <p className="text-gray-300 mt-2">{video.title}</p>
     </div>
   );
-}
+};
+
+export default EmbedPage;
