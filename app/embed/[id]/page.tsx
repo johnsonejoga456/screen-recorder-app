@@ -1,16 +1,17 @@
-
 import { supabase } from "@/lib/supabaseClient";
 import { notFound } from "next/navigation";
 import type { Metadata, NextPage } from "next";
 
 // Define the props type for the dynamic route
-interface EmbedPageProps {
-  params: { id: string };
-}
+type EmbedPageProps = {
+  params: Promise<{ id: string }>;
+};
 
 // Generate SEO metadata
-export async function generateMetadata({ params }: EmbedPageProps): Promise<Metadata> {
-  const { id } = params;
+export async function generateMetadata({
+  params,
+}: EmbedPageProps): Promise<Metadata> {
+  const { id } = await params; // Resolve the params Promise
   const { data: video } = await supabase
     .from("videos")
     .select("*")
@@ -24,7 +25,7 @@ export async function generateMetadata({ params }: EmbedPageProps): Promise<Meta
 
 // Main page component
 const EmbedPage: NextPage<EmbedPageProps> = async ({ params }) => {
-  const { id } = params;
+  const { id } = await params; // Resolve the params Promise
 
   const { data: video, error } = await supabase
     .from("videos")
