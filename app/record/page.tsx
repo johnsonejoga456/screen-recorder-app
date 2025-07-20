@@ -65,13 +65,17 @@ export default function RecordPage() {
       const fileUrl = publicUrlData.publicUrl;
 
       // Insert metadata into Supabase Database
-      const { data: insertedData, error: dbError } = await supabase.from("videos").insert({
-        user_id: user.id,
-        title: filename,
-        file_url: fileUrl,
-        visibility: "private",
-        processing_status: "processing",
-      }).select().single();
+      const { data: insertedData, error: dbError } = await supabase
+        .from("videos")
+        .insert({
+          user_id: user.id,
+          title: filename,
+          file_url: fileUrl,
+          visibility: "private",
+          processing_status: "processing",
+        })
+        .select()
+        .single();
 
       if (dbError) {
         alert("Error saving video metadata: " + dbError.message);
@@ -114,11 +118,7 @@ export default function RecordPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        Loading...
-      </div>
-    );
+    return <div className="flex items-center justify-center h-screen">Loading...</div>;
   }
 
   if (!user) {
