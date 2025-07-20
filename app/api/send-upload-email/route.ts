@@ -1,39 +1,92 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import { createFFmpeg, fetchFile } from "@ffmpeg/ffmpeg";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const { userEmail, fileName } = await req.json();
+    // Parse JSON body
+    const { video_id, user_email, file_url } = await req.json();
 
-    if (!userEmail || !fileName) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    // Initialize and load FFmpeg
+    const ffmpeg = createFFmpeg({
+      log: true,
+      corePath: "https://unpkg.com/@ffmpeg/core@0.12.7/dist/umd/ffmpeg-core.js",
+    });
+    await ffmpeg.load();
+
+    // Download video file
+    const response = await fetch(file_url);
+    const data = new Uint8Array(await response.arrayBuffer());
+    ffmpeg.FS("writeFile", "input.webm", await fetchFile(file_url));
+
+    // Compress/transcode
+    await ffmpeg.run("-i", "input.webm", "-vcodec", "libx264", "-crf", "28", "output.mp4");
+
+    // Retrieve compressed file
+    const output = ffmpeg.FS("readFile", "output.mp4");
+
+    // Upload compressed video to Supabase Storage
+    const { data: uploaded, error: uploadError } = await supabase.storage
+      .from("videos")
+      .upload(`compressed-${video_id}.mp4`, output.buffer, {
+        contentType: "video/mp4",
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.error("Upload error:", uploadError);
+      return NextResponse.json({ error: uploadError.message }, { status: 500 });
     }
 
-    const { error } = await resend.emails.send({
-      from: "Screen Recorder App <noreply@yourdomain.com>",
-      to: userEmail,
-      subject: "Your video has been uploaded!",
+    // Generate public URL for the compressed video
+    const { data: publicUrlData } = supabase.storage
+      .from("videos")
+      .getPublicUrl(`compressed-${video_id}.mp4`);
+
+    const compressedUrl = publicUrlData.publicUrl;
+
+    // Update DB
+    const { error: dbError } = await supabase
+      .from("videos")
+      .update({
+        file_url: compressedUrl,
+        processing_status: "completed",
+      })
+      .eq("id", video_id);
+
+    if (dbError) {
+      console.error("DB update error:", dbError);
+      return NextResponse.json({ error: dbError.message }, { status: 500 });
+    }
+
+    // Send email using Resend
+    const resend = new Resend(process.env.RESEND_API_KEY!);
+
+    await resend.emails.send({
+      from: "Screen Recorder <noreply@screenrecorder.onresend.com>",
+      to: [user_email],
+      subject: "Your video is ready!",
       html: `
-        <div style="font-family:sans-serif;line-height:1.5">
-          <h2>Upload Successful</h2>
-          <p>Hi there,</p>
-          <p>Your video <strong>${fileName}</strong> has been uploaded successfully to your library.</p>
-          <p>You can now view, manage, and share your video from your dashboard.</p>
-          <p>Thank you for using Screen Recorder App!</p>
-        </div>
+        <h2>Processing Completed</h2>
+        <p>Your video has been processed and is ready to view.</p>
+        <p><a href="${compressedUrl}">Click here to view your video</a></p>
       `,
     });
 
-    if (error) {
-      console.error(error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    return NextResponse.json({ message: "Email sent successfully" });
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { message: "Video processed and email sent." },
+      { status: 200 }
+    );
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "An error occurred";
+    console.error("Error processing video:", error);
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
