@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
-import { createFFmpeg, fetchFile } from "@ffmpeg/ffmpeg";
+import { FFmpeg } from "@ffmpeg/ffmpeg";
+import { fetchFile } from "@ffmpeg/util";
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -15,27 +16,25 @@ export async function POST(req: NextRequest) {
     const { video_id, user_email, file_url } = await req.json();
 
     // Initialize and load FFmpeg
-    const ffmpeg = createFFmpeg({
-      log: true,
-      corePath: "https://unpkg.com/@ffmpeg/core@0.12.7/dist/umd/ffmpeg-core.js",
+    const ffmpeg = new FFmpeg();
+    await ffmpeg.load({
+      coreURL: "https://unpkg.com/@ffmpeg/core@0.12.7/dist/umd/ffmpeg-core.js",
+      wasmURL: "https://unpkg.com/@ffmpeg/core@0.12.7/dist/umd/ffmpeg-core.wasm",
     });
-    await ffmpeg.load();
 
     // Download video file
-    const response = await fetch(file_url);
-    const data = new Uint8Array(await response.arrayBuffer());
-    ffmpeg.FS("writeFile", "input.webm", await fetchFile(file_url));
+    await ffmpeg.writeFile("input.webm", await fetchFile(file_url));
 
     // Compress/transcode
-    await ffmpeg.run("-i", "input.webm", "-vcodec", "libx264", "-crf", "28", "output.mp4");
+    await ffmpeg.exec(["-i", "input.webm", "-vcodec", "libx264", "-crf", "28", "output.mp4"]);
 
     // Retrieve compressed file
-    const output = ffmpeg.FS("readFile", "output.mp4");
+    const output = await ffmpeg.readFile("output.mp4");
 
     // Upload compressed video to Supabase Storage
     const { data: uploaded, error: uploadError } = await supabase.storage
       .from("videos")
-      .upload(`compressed-${video_id}.mp4`, output.buffer, {
+      .upload(`compressed-${video_id}.mp4`, output, {
         contentType: "video/mp4",
         upsert: true,
       });
