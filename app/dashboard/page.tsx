@@ -1,10 +1,14 @@
 "use client";
-
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
 import useAuth from "@/hooks/useAuth";
 import { useState } from "react";
-import { Trash, Eye, Pencil, Link2 } from "lucide-react";
+import { Trash, Eye, Pencil, Link2, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 type Video = {
   id: string;
@@ -15,27 +19,41 @@ type Video = {
   visibility: "public" | "private" | "unlisted";
   created_at: string;
   updated_at: string;
+  processing_status?: string;
 };
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState("");
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
+  const [shareUrl, setShareUrl] = useState("");
+  const [embedCode, setEmbedCode] = useState("");
+  const [urlExpiration, setUrlExpiration] = useState("24"); // Hours
 
-  const { data: videos = [], isLoading } = useQuery<Video[]>({
+  const { data: videos = [], isLoading, error } = useQuery<Video[]>({
     queryKey: ["videos"],
     queryFn: async () => {
-      if (!user) return [];
+      if (!user) {
+        console.log("No user found, returning empty array");
+        return [];
+      }
+      console.log("Fetching videos for user_id:", user.id);
       const { data, error } = await supabase
         .from("videos")
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
-      if (error) throw error;
+      if (error) {
+        console.error("Query error:", error.message);
+        throw error;
+      }
+      console.log("Fetched videos:", data);
       return data as Video[];
     },
-    enabled: !!user,
+    enabled: !!user && !authLoading,
   });
 
   const deleteMutation = useMutation({
@@ -79,12 +97,12 @@ export default function DashboardPage() {
     }
 
     let shareUrl = video.file_url;
-
     if (video.visibility === "unlisted") {
       const fileName = video.file_url.split("/").pop() ?? "";
+      const expiration = parseInt(urlExpiration) * 60 * 60; // Convert hours to seconds
       const { data, error } = await supabase.storage
         .from("videos")
-        .createSignedUrl(fileName, 60 * 60); // 1 hour
+        .createSignedUrl(fileName, expiration);
       if (error) {
         alert("Failed to create signed URL: " + error.message);
         return;
@@ -92,17 +110,20 @@ export default function DashboardPage() {
       shareUrl = data?.signedUrl;
     }
 
-    await navigator.clipboard.writeText(shareUrl);
-    alert("Share link copied to clipboard!");
-  };
-
-  const handleCopyEmbedCode = async (video: Video) => {
     const embed = `<iframe src="${process.env.NEXT_PUBLIC_SITE_URL}/embed/${video.id}" width="640" height="360" frameborder="0" allowfullscreen></iframe>`;
-    await navigator.clipboard.writeText(embed);
-    alert("Embed code copied to clipboard!");
+
+    setSelectedVideo(video);
+    setShareUrl(shareUrl);
+    setEmbedCode(embed);
+    setShareModalOpen(true);
   };
 
-  if (isLoading) {
+  const handleCopy = async (text: string, type: "link" | "embed") => {
+    await navigator.clipboard.writeText(text);
+    alert(`${type === "link" ? "Share link" : "Embed code"} copied to clipboard!`);
+  };
+
+  if (authLoading || isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
         <p className="text-gray-600">Loading your videos...</p>
@@ -110,105 +131,174 @@ export default function DashboardPage() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <p className="text-red-600">Error: {error.message}</p>
+      </div>
+    );
+  }
+
   return (
     <main className="max-w-4xl mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-6">Your Uploaded Videos</h1>
-      {videos.length === 0 ? (
-        <p className="text-gray-600">You have not uploaded any videos yet.</p>
-      ) : (
-        <div className="space-y-4">
-          {videos.map((video) => (
-            <div
-              key={video.id}
-              className="flex flex-col md:flex-row md:items-center justify-between p-4 border rounded-lg shadow-sm bg-white dark:bg-gray-800"
-            >
-              <div className="flex flex-col md:flex-row md:items-center md:space-x-4">
-                {editingId === video.id ? (
-                  <div className="flex space-x-2">
-                    <input
-                      type="text"
-                      className="border rounded px-2 py-1 dark:bg-gray-700 dark:border-gray-600"
-                      value={newTitle}
-                      onChange={(e) => setNewTitle(e.target.value)}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-2xl font-bold">Your Uploaded Videos</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {videos.length === 0 ? (
+            <p className="text-gray-600">
+              You have not uploaded any videos yet.{" "}
+              <a href="/record" className="text-blue-600 hover:underline">
+                Record a video
+              </a>.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {videos.map((video) => (
+                <div
+                  key={video.id}
+                  className="flex flex-col md:flex-row md:items-center justify-between p-4 border rounded-lg shadow-sm bg-white dark:bg-gray-800"
+                >
+                  <div className="flex flex-col md:flex-row md:items-center md:space-x-4">
+                    <video
+                      src={video.file_url}
+                      className="w-24 h-16 object-cover rounded mr-4"
+                      muted
                     />
-                    <button
-                      onClick={() => renameMutation.mutate({ id: video.id, title: newTitle })}
-                      className="text-sm px-3 py-1 bg-green-600 text-white rounded"
+                    {editingId === video.id ? (
+                      <div className="flex space-x-2">
+                        <Input
+                          type="text"
+                          className="border rounded px-2 py-1 dark:bg-gray-700 dark:border-gray-600"
+                          value={newTitle}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewTitle(e.target.value)}
+                        />
+                        <Button
+                          onClick={() => renameMutation.mutate({ id: video.id, title: newTitle })}
+                          className="text-sm px-3 py-1 bg-green-600 text-white rounded"
+                        >
+                          Save
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col">
+                        <span className="font-medium text-gray-800 dark:text-gray-100">
+                          {video.title}
+                        </span>
+                        <span className="text-sm text-gray-500">
+                          {new Date(video.created_at).toLocaleString()}
+                          {video.processing_status && ` | Status: ${video.processing_status}`}
+                        </span>
+                      </div>
+                    )}
+
+                    <select
+                      value={video.visibility}
+                      onChange={(e) =>
+                        updateVisibility.mutate({
+                          id: video.id,
+                          visibility: e.target.value as "public" | "private" | "unlisted",
+                        })
+                      }
+                      className="mt-2 md:mt-0 border px-2 py-1 rounded text-sm dark:bg-gray-700 dark:border-gray-600"
                     >
-                      Save
-                    </button>
+                      <option value="private">Private</option>
+                      <option value="unlisted">Unlisted</option>
+                      <option value="public">Public</option>
+                    </select>
                   </div>
-                ) : (
-                  <div className="flex flex-col">
-                    <span className="font-medium text-gray-800 dark:text-gray-100">
-                      {video.title}
-                    </span>
-                    <span className="text-sm text-gray-500">
-                      {new Date(video.created_at).toLocaleString()}
-                    </span>
+
+                  <div className="flex items-center space-x-2 mt-2 md:mt-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => window.open(video.file_url, "_blank")}
+                      title="View"
+                    >
+                      <Eye className="w-5 h-5 text-blue-600" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        setEditingId(video.id);
+                        setNewTitle(video.title);
+                      }}
+                      title="Rename"
+                    >
+                      <Pencil className="w-5 h-5 text-yellow-600" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => deleteMutation.mutate(video)}
+                      title="Delete"
+                    >
+                      <Trash className="w-5 h-5 text-red-600" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleGenerateLink(video)}
+                      title="Share"
+                    >
+                      <Link2 className="w-5 h-5 text-purple-600" />
+                    </Button>
                   </div>
-                )}
-
-                <select
-                  value={video.visibility}
-                  onChange={(e) =>
-                    updateVisibility.mutate({
-                      id: video.id,
-                      visibility: e.target.value as "public" | "private" | "unlisted",
-                    })
-                  }
-                  className="mt-2 md:mt-0 border px-2 py-1 rounded text-sm dark:bg-gray-700 dark:border-gray-600"
-                >
-                  <option value="private">Private</option>
-                  <option value="unlisted">Unlisted</option>
-                  <option value="public">Public</option>
-                </select>
-              </div>
-
-              <div className="flex items-center space-x-2 mt-2 md:mt-0">
-                <button
-                  onClick={() => window.open(video.file_url, "_blank")}
-                  className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
-                  title="View"
-                >
-                  <Eye className="w-5 h-5 text-blue-600" />
-                </button>
-                <button
-                  onClick={() => {
-                    setEditingId(video.id);
-                    setNewTitle(video.title);
-                  }}
-                  className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
-                  title="Rename"
-                >
-                  <Pencil className="w-5 h-5 text-yellow-600" />
-                </button>
-                <button
-                  onClick={() => deleteMutation.mutate(video)}
-                  className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
-                  title="Delete"
-                >
-                  <Trash className="w-5 h-5 text-red-600" />
-                </button>
-                <button
-                  onClick={() => handleGenerateLink(video)}
-                  className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
-                  title="Copy Share Link"
-                >
-                  <Link2 className="w-5 h-5 text-purple-600" />
-                </button>
-                <button
-                  onClick={() => handleCopyEmbedCode(video)}
-                  className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
-                  title="Copy Embed Code"
-                >
-                  📋
-                </button>
-              </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={shareModalOpen} onOpenChange={setShareModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Share Video: {selectedVideo?.title}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Share Link</Label>
+              <Input value={shareUrl} readOnly className="mt-1" />
+              <Button
+                className="mt-2"
+                onClick={() => handleCopy(shareUrl, "link")}
+              >
+                Copy Link
+              </Button>
+            </div>
+            <div>
+              <Label>Embed Code</Label>
+              <Input value={embedCode} readOnly className="mt-1" />
+              <Button
+                className="mt-2"
+                onClick={() => handleCopy(embedCode, "embed")}
+              >
+                Copy Embed Code
+              </Button>
+            </div>
+            {selectedVideo?.visibility === "unlisted" && (
+              <div>
+                <Label>Link Expiration (hours)</Label>
+                <Input
+                  type="number"
+                  value={urlExpiration}
+                  onChange={(e) => setUrlExpiration(e.target.value)}
+                  min="1"
+                  className="mt-1"
+                />
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShareModalOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
