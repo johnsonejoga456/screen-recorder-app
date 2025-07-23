@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
 import useAuth from "@/hooks/useAuth";
 import { useState } from "react";
-import { Trash, Eye, Pencil, Link2, X } from "lucide-react";
+import { Trash, Eye, Pencil, Link2, Twitter, Facebook } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,7 +19,8 @@ type Video = {
   visibility: "public" | "private" | "unlisted";
   created_at: string;
   updated_at: string;
-  processing_status?: string;
+  processing_status: string;
+  views?: number;
 };
 
 export default function DashboardPage() {
@@ -31,7 +32,7 @@ export default function DashboardPage() {
   const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
   const [shareUrl, setShareUrl] = useState("");
   const [embedCode, setEmbedCode] = useState("");
-  const [urlExpiration, setUrlExpiration] = useState("24"); // Hours
+  const [urlExpiration, setUrlExpiration] = useState("24");
 
   const { data: videos = [], isLoading, error } = useQuery<Video[]>({
     queryKey: ["videos"],
@@ -99,7 +100,7 @@ export default function DashboardPage() {
     let shareUrl = video.file_url;
     if (video.visibility === "unlisted") {
       const fileName = video.file_url.split("/").pop() ?? "";
-      const expiration = parseInt(urlExpiration) * 60 * 60; // Convert hours to seconds
+      const expiration = parseInt(urlExpiration) * 60 * 60;
       const { data, error } = await supabase.storage
         .from("videos")
         .createSignedUrl(fileName, expiration);
@@ -121,6 +122,19 @@ export default function DashboardPage() {
   const handleCopy = async (text: string, type: "link" | "embed") => {
     await navigator.clipboard.writeText(text);
     alert(`${type === "link" ? "Share link" : "Embed code"} copied to clipboard!`);
+  };
+
+  const handleSocialShare = (platform: "twitter" | "facebook") => {
+    if (!shareUrl) return;
+    const encodedUrl = encodeURIComponent(shareUrl);
+    const title = encodeURIComponent(selectedVideo?.title || "Check out my video!");
+    let shareLink = "";
+    if (platform === "twitter") {
+      shareLink = `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${title}`;
+    } else if (platform === "facebook") {
+      shareLink = `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`;
+    }
+    window.open(shareLink, "_blank");
   };
 
   if (authLoading || isLoading) {
@@ -189,6 +203,7 @@ export default function DashboardPage() {
                         <span className="text-sm text-gray-500">
                           {new Date(video.created_at).toLocaleString()}
                           {video.processing_status && ` | Status: ${video.processing_status}`}
+                          {video.views != null && ` | Views: ${video.views}`}
                         </span>
                       </div>
                     )}
@@ -262,12 +277,29 @@ export default function DashboardPage() {
             <div>
               <Label>Share Link</Label>
               <Input value={shareUrl} readOnly className="mt-1" />
-              <Button
-                className="mt-2"
-                onClick={() => handleCopy(shareUrl, "link")}
-              >
-                Copy Link
-              </Button>
+              <div className="flex space-x-2 mt-2">
+                <Button onClick={() => handleCopy(shareUrl, "link")}>
+                  Copy Link
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => window.open(shareUrl, "_blank")}
+                >
+                  Preview Link
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => handleSocialShare("twitter")}
+                >
+                  <Twitter className="w-4 h-4 mr-2" /> Twitter
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => handleSocialShare("facebook")}
+                >
+                  <Facebook className="w-4 h-4 mr-2" /> Facebook
+                </Button>
+              </div>
             </div>
             <div>
               <Label>Embed Code</Label>

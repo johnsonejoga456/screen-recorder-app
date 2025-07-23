@@ -1,6 +1,7 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
-import { supabase, type PostgrestSingleResponse } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
+import { type PostgrestSingleResponse } from "@supabase/supabase-js";
 import useAuth from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,13 +10,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Video, Loader2 } from "lucide-react";
 
 type VideoRecord = {
-  id: string;
   user_id: string;
   title: string;
   file_url: string;
   visibility: "public" | "private" | "unlisted";
   processing_status: string;
-  share_password?: string;
 };
 
 export default function RecordPage() {
@@ -24,7 +23,6 @@ export default function RecordPage() {
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [title, setTitle] = useState("");
-  const [sharePassword, setSharePassword] = useState("");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -47,9 +45,9 @@ export default function RecordPage() {
       videoRef.current.load();
       videoRef.current.src = videoUrl;
       videoRef.current.load();
-      console.log("Video element reloaded with URL:", videoUrl);
+      console.log("Video element reloaded with URL:", videoUrl, "MIME type:", videoBlob?.type);
     }
-  }, [videoUrl]);
+  }, [videoUrl, videoBlob]);
 
   const startRecording = async () => {
     try {
@@ -64,7 +62,9 @@ export default function RecordPage() {
       streamRef.current = stream;
       console.log("Stream acquired:", stream.getTracks());
 
-      const mimeType = MediaRecorder.isTypeSupported("video/mp4")
+      const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=h264")
+        ? "video/webm;codecs=h264"
+        : MediaRecorder.isTypeSupported("video/mp4")
         ? "video/mp4"
         : MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
         ? "video/webm;codecs=vp9"
@@ -124,12 +124,22 @@ export default function RecordPage() {
   };
 
   const handleUpload = async () => {
-    if (!user || !videoBlob || !title) {
+    if (!user || !user.id || !user.email) {
+      setError("User not authenticated. Please sign in again.");
+      console.error("User object invalid:", user);
+      return;
+    }
+    if (!videoBlob || !title) {
       setError("Please provide a title and record a video.");
       return;
     }
     if (videoBlob.size === 0) {
       setError("Invalid video file. Please record again.");
+      return;
+    }
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      setError("Supabase URL not configured.");
+      console.error("Missing NEXT_PUBLIC_SUPABASE_URL");
       return;
     }
 
@@ -138,33 +148,44 @@ export default function RecordPage() {
     try {
       const fileExtension = videoBlob.type.includes("mp4") ? "mp4" : "webm";
       const fileName = `user_${user.id}/${Date.now()}_${title.replace(/\s+/g, "_")}.${fileExtension}`;
-      console.log("Uploading to:", fileName);
+      console.log("Uploading to:", fileName, "Content-Type:", videoBlob.type);
+
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from("videos")
         .upload(fileName, videoBlob, { contentType: videoBlob.type });
       if (uploadError) {
         console.error("Upload error:", uploadError);
-        throw uploadError;
+        throw new Error(`Storage upload failed: ${uploadError.message}`);
+      }
+      if (!uploadData) {
+        console.error("No upload data returned");
+        throw new Error("No upload data returned from storage.");
       }
 
-      const file_url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/videos/${uploadData?.path}`;
+      const file_url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/videos/${uploadData.path}`;
       console.log("Uploaded file URL:", file_url);
 
-      const { data: videoData, error: insertError }: PostgrestSingleResponse<VideoRecord> = await supabase
+      const videoRecord: VideoRecord = {
+        user_id: user.id,
+        title,
+        file_url,
+        visibility: "private",
+        processing_status: "pending",
+      };
+      console.log("Inserting video record:", videoRecord);
+
+      const { data: videoData, error: insertError }: PostgrestSingleResponse<VideoRecord & { id: string }> = await supabase
         .from("videos")
-        .insert({
-          user_id: user.id,
-          title,
-          file_url,
-          visibility: "private",
-          processing_status: "pending",
-          share_password: sharePassword || null,
-        })
+        .insert(videoRecord)
         .select()
         .single();
       if (insertError) {
         console.error("Insert error:", insertError);
-        throw insertError;
+        throw new Error(`Database insert failed: ${insertError.message}`);
+      }
+      if (!videoData) {
+        console.error("No video data returned");
+        throw new Error("No video data returned from database.");
       }
 
       const response = await fetch("/api/send-upload-email", {
@@ -182,13 +203,13 @@ export default function RecordPage() {
       setVideoBlob(null);
       setVideoUrl(null);
       setTitle("");
-      setSharePassword("");
       if (videoRef.current) {
         videoRef.current.src = "";
         videoRef.current.load();
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Upload failed.");
+      const errorMessage = err instanceof Error ? err.message : "Upload failed.";
+      setError(errorMessage);
       console.error("Upload error:", err);
     } finally {
       setUploading(false);
@@ -235,8 +256,8 @@ export default function RecordPage() {
                 controls
                 className="w-full max-w-2xl rounded-lg shadow"
                 onError={(e) => {
-                  console.error("Video playback error:", e);
-                  setError("Failed to play recorded video. Download the debug video to verify.");
+                  console.error("Video playback error:", (e as any).message || e);
+                  setError("Failed to play recorded video. Try downloading the debug video.");
                 }}
               >
                 {videoUrl && <source src={videoUrl} type={videoBlob?.type} />}
@@ -251,14 +272,6 @@ export default function RecordPage() {
               value={title}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
               disabled={uploading}
-            />
-            <Input
-              type="password"
-              placeholder="Optional share password (for unlisted videos)"
-              value={sharePassword}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSharePassword(e.target.value)}
-              disabled={uploading}
-              className="mt-2"
             />
             <Button
               onClick={handleUpload}
