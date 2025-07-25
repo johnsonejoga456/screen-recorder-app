@@ -78,7 +78,7 @@ export default function RecordPage() {
       console.log("MediaRecorder initialized with MIME type:", mimeType);
 
       chunksRef.current = [];
-      mediaRecorderRef.current.ondataavailable = (e) => {
+      mediaRecorderRef.current.ondataavailable = (e: BlobEvent) => {
         if (e.data.size > 0) {
           chunksRef.current.push(e.data);
           console.log("Data available, chunk size:", e.data.size);
@@ -101,9 +101,9 @@ export default function RecordPage() {
           streamRef.current = null;
         }
       };
-      mediaRecorderRef.current.onerror = (e) => {
+      mediaRecorderRef.current.onerror = (e: Event) => {
         console.error("MediaRecorder error:", e);
-        setError("Recording error: " + (e as any).error?.message || "Unknown error");
+        setError("An error occurred during recording. Please try again.");
       };
 
       mediaRecorderRef.current.start(1000);
@@ -255,8 +255,8 @@ export default function RecordPage() {
                 ref={videoRef}
                 controls
                 className="w-full max-w-2xl rounded-lg shadow"
-                onError={(e) => {
-                  console.error("Video playback error:", (e as any).message || e);
+                onError={(e: React.SyntheticEvent<HTMLVideoElement>) => {
+                  console.error("Video playback error:", e);
                   setError("Failed to play recorded video. Try downloading the debug video.");
                 }}
               >
