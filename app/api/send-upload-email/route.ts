@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { Resend } from "resend";
+import { createTransport } from "nodemailer";
 
 export async function POST(request: Request) {
   try {
@@ -34,23 +34,28 @@ export async function POST(request: Request) {
       );
     }
 
-    // Initialize Resend client
-    const resendApiKey = process.env.RESEND_API_KEY;
-    if (!resendApiKey) {
-      console.error("RESEND_API_KEY is not set");
+    // Initialize Nodemailer with SendGrid SMTP
+    const sendgridApiKey = process.env.SENDGRID_API_KEY;
+    if (!sendgridApiKey) {
+      console.error("SENDGRID_API_KEY is not set");
       return NextResponse.json(
         { error: "Email service configuration missing" },
         { status: 500 }
       );
     }
-    const resend = new Resend(resendApiKey);
+
+    const transporter = createTransport({
+      host: "ejogajohnson@gmail.com",
+      port: 587,
+      auth: {
+        user: "apikey",
+        pass: sendgridApiKey,
+      },
+    });
 
     // Send email notification
-    const fromEmail = process.env.RESEND_DOMAIN
-      ? `noreply@${process.env.RESEND_DOMAIN}`
-      : "onboarding@resend.dev"; // Fallback to test mode email
-    const { data, error: emailError } = await resend.emails.send({
-      from: fromEmail,
+    const mailOptions = {
+      from: "ejogajohnson@gmail.com",
       to: user_email,
       subject: "Your Video Upload is Complete",
       html: `
@@ -58,17 +63,11 @@ export async function POST(request: Request) {
         <p>Your video has been successfully uploaded and processed.</p>
         <p>View it here: <a href="${file_url}">${file_url}</a></p>
       `,
-    });
+    };
 
-    if (emailError) {
-      console.error("Resend email error:", emailError);
-      return NextResponse.json(
-        { error: `Failed to send email: ${emailError.message || "Unknown error"}` },
-        { status: 500 }
-      );
-    }
+    const info = await transporter.sendMail(mailOptions);
 
-    console.log("Email sent successfully:", data);
+    console.log("Email sent successfully:", info);
     return NextResponse.json({ message: "Email sent successfully" }, { status: 200 });
   } catch (error) {
     console.error("Server error:", error);
