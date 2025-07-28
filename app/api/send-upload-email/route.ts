@@ -50,8 +50,16 @@ export async function POST(request: NextRequest) {
 
     console.log("Email sent successfully");
     return NextResponse.json({ message: "Email sent successfully" }, { status: 200 });
-  } catch (error: any) {
-    console.error("Email send error:", error.response?.body || error.message || error);
+
+  } catch (error: unknown) {
+    if (typeof error === "object" && error !== null && "response" in error) {
+      console.error("Email send error:", (error as any).response?.body);
+    } else if (error instanceof Error) {
+      console.error("Email send error:", error.message);
+    } else {
+      console.error("Unknown error during email send", error);
+    }
+
     return NextResponse.json(
       { error: "Internal server error during email send" },
       { status: 500 }
