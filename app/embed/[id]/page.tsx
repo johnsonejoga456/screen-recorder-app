@@ -7,11 +7,10 @@ type EmbedPageProps = {
   params: Promise<{ id: string }>;
 };
 
-// Generate SEO metadata
-export async function generateMetadata({
-  params,
-}: EmbedPageProps): Promise<Metadata> {
-  const { id } = await params; // Resolve the params Promise
+// SEO metadata
+export async function generateMetadata({ params }: EmbedPageProps): Promise<Metadata> {
+  const { id } = await params; // Await params to access id
+
   const { data: video } = await supabase
     .from("videos")
     .select("*")
@@ -25,7 +24,7 @@ export async function generateMetadata({
 
 // Main page component
 const EmbedPage: NextPage<EmbedPageProps> = async ({ params }) => {
-  const { id } = await params; // Resolve the params Promise
+  const { id } = await params; // Await params to access id
 
   const { data: video, error } = await supabase
     .from("videos")
@@ -35,7 +34,7 @@ const EmbedPage: NextPage<EmbedPageProps> = async ({ params }) => {
 
   if (error || !video) {
     notFound();
-    return null; // Ensures type safety
+    return null;
   }
 
   if (video.visibility === "private") {
@@ -46,12 +45,22 @@ const EmbedPage: NextPage<EmbedPageProps> = async ({ params }) => {
     );
   }
 
+  // Generate a signed URL (expires in 1 hour)
+  const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+    .from("videos")
+    .createSignedUrl(video.file_path, 60 * 60); // file_path is the path inside bucket
+
+  if (signedUrlError || !signedUrlData?.signedUrl) {
+    notFound();
+    return null;
+  }
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-black">
       <video
         controls
         className="w-full max-w-4xl rounded-lg shadow-lg"
-        src={video.file_url}
+        src={signedUrlData.signedUrl}
       />
       <p className="text-gray-300 mt-2">{video.title}</p>
     </div>

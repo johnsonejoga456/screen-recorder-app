@@ -3,12 +3,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
 import useAuth from "@/hooks/useAuth";
 import { useState } from "react";
-import { Trash, Eye, Pencil, Link2, Twitter, Facebook } from "lucide-react";
+import { Trash, Eye, Pencil, Link2, Twitter, Facebook, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import Link from "next/link";
 
 type Video = {
   id: string;
@@ -156,16 +157,21 @@ export default function DashboardPage() {
   return (
     <main className="max-w-4xl mx-auto p-6">
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row justify-between items-center">
           <CardTitle className="text-2xl font-bold">Your Uploaded Videos</CardTitle>
+          <Link href="/record">
+            <Button className="bg-blue-600 hover:bg-blue-700">
+              <Video className="mr-2 w-4 h-4" /> Record a Video
+            </Button>
+          </Link>
         </CardHeader>
         <CardContent>
           {videos.length === 0 ? (
             <p className="text-gray-600">
               You have not uploaded any videos yet.{" "}
-              <a href="/record" className="text-blue-600 hover:underline">
+              <Link href="/record" className="text-blue-600 hover:underline">
                 Record a video
-              </a>.
+              </Link>.
             </p>
           ) : (
             <div className="space-y-4">

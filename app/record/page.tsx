@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Video, Loader2 } from "lucide-react";
+import Link from "next/link";
 
 type VideoRecord = {
   user_id: string;
@@ -25,6 +26,7 @@ export default function RecordPage() {
   const [title, setTitle] = useState("");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -90,7 +92,7 @@ export default function RecordPage() {
         const blob = new Blob(chunksRef.current, { type: mimeType });
         console.log("Recording stopped, blob size:", blob.size, "MIME type:", mimeType);
         if (blob.size === 0) {
-          setError("No video data recorded. Try again.");
+          setError("No video data was recorded. Please try again.");
           return;
         }
         setVideoBlob(blob);
@@ -103,14 +105,14 @@ export default function RecordPage() {
       };
       mediaRecorderRef.current.onerror = (e: Event) => {
         console.error("MediaRecorder error:", e);
-        setError("An error occurred during recording. Please try again.");
+        setError("An error occurred while recording. Please try again.");
       };
 
       mediaRecorderRef.current.start(1000);
       setRecording(true);
       console.log("Recording started");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to start recording.");
+      setError("Failed to start recording. Please check your browser permissions and try again.");
       console.error("Start recording error:", err);
     }
   };
@@ -125,26 +127,27 @@ export default function RecordPage() {
 
   const handleUpload = async () => {
     if (!user || !user.id || !user.email) {
-      setError("User not authenticated. Please sign in again.");
+      setError("Please sign in to upload videos.");
       console.error("User object invalid:", user);
       return;
     }
     if (!videoBlob || !title) {
-      setError("Please provide a title and record a video.");
+      setError("Please record a video and enter a title.");
       return;
     }
     if (videoBlob.size === 0) {
-      setError("Invalid video file. Please record again.");
+      setError("The recorded video is empty. Please record again.");
       return;
     }
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-      setError("Supabase URL not configured.");
+      setError("App configuration error. Please contact support.");
       console.error("Missing NEXT_PUBLIC_SUPABASE_URL");
       return;
     }
 
     setUploading(true);
     setError(null);
+    setUploadSuccess(false);
     try {
       const fileExtension = videoBlob.type.includes("mp4") ? "mp4" : "webm";
       const fileName = `user_${user.id}/${Date.now()}_${title.replace(/\s+/g, "_")}.${fileExtension}`;
@@ -155,7 +158,7 @@ export default function RecordPage() {
         .upload(fileName, videoBlob, { contentType: videoBlob.type });
       if (uploadError) {
         console.error("Upload error:", uploadError);
-        throw new Error(`Storage upload failed: ${uploadError.message}`);
+        throw new Error("Failed to upload video to storage. Please try again.");
       }
       if (!uploadData) {
         console.error("No upload data returned");
@@ -181,25 +184,34 @@ export default function RecordPage() {
         .single();
       if (insertError) {
         console.error("Insert error:", insertError);
-        throw new Error(`Database insert failed: ${insertError.message}`);
+        throw new Error("Failed to save video details. Please try again.");
       }
       if (!videoData) {
         console.error("No video data returned");
         throw new Error("No video data returned from database.");
       }
 
-      const response = await fetch("/api/send-upload-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ video_id: videoData.id, user_email: user.email, file_url }),
-      });
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error("API error:", errorData);
-        throw new Error(errorData.error || "Failed to process video");
+      // Attempt to send email notification
+      try {
+        console.log("Sending email to:", user.email);
+        const response = await fetch("/api/send-upload-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ video_id: videoData.id, user_email: user.email, file_url }),
+        });
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error("Email API error:", errorData);
+          alert("Video uploaded successfully, but we couldn’t send the email notification. Check your email settings.");
+        } else {
+          alert("Video uploaded successfully! You’ll receive an email when processing is complete.");
+        }
+      } catch (emailErr) {
+        console.error("Email notification error:", emailErr);
+        alert("Video uploaded successfully, but we couldn’t send the email notification. Check your email settings.");
       }
 
-      alert("Video uploaded successfully! You will be notified when processing is complete.");
+      setUploadSuccess(true);
       setVideoBlob(null);
       setVideoUrl(null);
       setTitle("");
@@ -208,7 +220,7 @@ export default function RecordPage() {
         videoRef.current.load();
       }
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : "Upload failed.";
+      const errorMessage = err instanceof Error ? err.message : "Failed to upload video. Please try again.";
       setError(errorMessage);
       console.error("Upload error:", err);
     } finally {
@@ -257,7 +269,7 @@ export default function RecordPage() {
                 className="w-full max-w-2xl rounded-lg shadow"
                 onError={(e: React.SyntheticEvent<HTMLVideoElement>) => {
                   console.error("Video playback error:", e);
-                  setError("Failed to play recorded video. Try downloading the debug video.");
+                  setError("Failed to play the recorded video. Try downloading it to check.");
                 }}
               >
                 {videoUrl && <source src={videoUrl} type={videoBlob?.type} />}
@@ -281,6 +293,17 @@ export default function RecordPage() {
               {uploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : "Upload Video"}
             </Button>
           </div>
+
+          {uploadSuccess && (
+            <Alert variant="default" className="bg-green-100 text-green-800">
+              <AlertDescription>
+                Your video was uploaded successfully!{" "}
+                <Link href="/dashboard" className="text-blue-600 hover:underline">
+                  View your videos on the dashboard
+                </Link>.
+              </AlertDescription>
+            </Alert>
+          )}
 
           {error && (
             <Alert variant="destructive">
