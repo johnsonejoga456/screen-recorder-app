@@ -52,8 +52,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "Email sent successfully" }, { status: 200 });
 
   } catch (error: unknown) {
-    if (typeof error === "object" && error !== null && "response" in error) {
-      console.error("Email send error:", (error as any).response?.body);
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "response" in error &&
+      typeof (error as { response: unknown }).response === "object"
+    ) {
+      const errorWithResponse = error as { response: { body?: unknown } };
+      console.error("Email send error:", errorWithResponse.response?.body);
     } else if (error instanceof Error) {
       console.error("Email send error:", error.message);
     } else {
