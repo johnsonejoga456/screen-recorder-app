@@ -165,13 +165,13 @@ export default function RecordPage() {
         throw new Error("No upload data returned from storage.");
       }
 
-      const file_url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/videos/${uploadData.path}`;
-      console.log("Uploaded file URL:", file_url);
+      const file_path = uploadData.path;
+      console.log("Uploaded file URL:", file_path);
 
       const videoRecord: VideoRecord = {
         user_id: user.id,
         title,
-        file_url,
+        file_url: file_path,
         visibility: "private",
         processing_status: "pending",
       };
@@ -197,7 +197,7 @@ export default function RecordPage() {
         const response = await fetch("/api/send-upload-email", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ video_id: videoData.id, user_email: user.email, file_url }),
+          body: JSON.stringify({ video_id: videoData.id, user_email: user.email, file_path }),
         });
         if (!response.ok) {
           const errorData = await response.json();

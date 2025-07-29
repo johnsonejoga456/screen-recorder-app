@@ -4,37 +4,67 @@ import sgMail from "@sendgrid/mail";
 
 export async function POST(request: NextRequest) {
   try {
-    const { video_id, user_email, file_url } = await request.json();
+    const { video_id, user_email, file_path } = await request.json();
 
-    if (!video_id || !user_email || !file_url) {
-      console.error("Missing required fields:", { video_id, user_email, file_url });
-      return NextResponse.json({ error: "Missing video_id, user_email, or file_url" }, { status: 400 });
+    if (!video_id || !user_email || !file_path) {
+      console.error("Missing required fields:", { video_id, user_email, file_path });
+      return NextResponse.json(
+        { error: "Missing video_id, user_email, or file_path" },
+        { status: 400 }
+      );
+    }
+
+    // Validate environment variables
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error("Supabase configuration missing:", {
+        SUPABASE_URL: !!process.env.SUPABASE_URL,
+        SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+      });
+      return NextResponse.json({ error: "Supabase configuration missing" }, { status: 500 });
+    }
+
+    if (!process.env.SENDGRID_API_KEY) {
+      console.error("SENDGRID_API_KEY is not set");
+      return NextResponse.json({ error: "Email service configuration missing" }, { status: 500 });
+    }
+
+    if (!process.env.SENDGRID_FROM_EMAIL) {
+      console.error("SENDGRID_FROM_EMAIL is not set");
+      return NextResponse.json({ error: "Email sender configuration missing" }, { status: 500 });
+    }
+
+    if (!process.env.NEXT_PUBLIC_SITE_URL) {
+      console.error("NEXT_PUBLIC_SITE_URL is not set");
+      return NextResponse.json({ error: "Site URL configuration missing" }, { status: 500 });
     }
 
     const supabase = createClient(
-      process.env.SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
     );
 
-    const { error: updateError } = await supabase
+    // Update video processing status
+    const { data: videoData, error: updateError } = await supabase
       .from("videos")
       .update({ processing_status: "completed" })
-      .eq("id", video_id);
+      .eq("id", video_id)
+      .select("short_id")
+      .single();
 
     if (updateError) {
       console.error("Supabase update error:", updateError);
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+      return NextResponse.json({ error: `Failed to update video status: ${updateError.message}` }, { status: 500 });
     }
 
-    // Setup SendGrid API
-    const sendgridApiKey = process.env.SENDGRID_API_KEY;
-    if (!sendgridApiKey) {
-      console.error("SENDGRID_API_KEY is not set");
-      return NextResponse.json({ error: "Email service not configured" }, { status: 500 });
+    if (!videoData?.short_id) {
+      console.error("No short_id found for video:", video_id);
+      return NextResponse.json({ error: "Short URL not available for this video" }, { status: 500 });
     }
 
-    sgMail.setApiKey(sendgridApiKey);
+    // Setup SendGrid
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
+    const shortUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/v/${videoData.short_id}`;
     const msg = {
       to: user_email,
       from: process.env.SENDGRID_FROM_EMAIL!,
@@ -42,13 +72,13 @@ export async function POST(request: NextRequest) {
       html: `
         <h1>Video Upload Complete</h1>
         <p>Your video has been successfully uploaded and processed.</p>
-        <p><a href="${file_url}">View your video</a></p>
+        <p><a href="${shortUrl}">View your video</a></p>
       `,
     };
 
     await sgMail.send(msg);
 
-    console.log("Email sent successfully");
+    console.log("Email sent successfully to:", user_email, "with short URL:", shortUrl);
     return NextResponse.json({ message: "Email sent successfully" }, { status: 200 });
 
   } catch (error: unknown) {

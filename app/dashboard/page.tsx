@@ -22,6 +22,7 @@ type Video = {
   updated_at: string;
   processing_status: string;
   views?: number;
+  signed_url?: string;
 };
 
 export default function DashboardPage() {
@@ -33,7 +34,6 @@ export default function DashboardPage() {
   const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
   const [shareUrl, setShareUrl] = useState("");
   const [embedCode, setEmbedCode] = useState("");
-  const [urlExpiration, setUrlExpiration] = useState("24");
 
   const { data: videos = [], isLoading, error } = useQuery<Video[]>({
     queryKey: ["videos"],
@@ -52,8 +52,22 @@ export default function DashboardPage() {
         console.error("Query error:", error.message);
         throw error;
       }
-      console.log("Fetched videos:", data);
-      return data as Video[];
+      // Generate signed URLs for playback
+      const videosWithSignedUrls = await Promise.all(
+        data.map(async (video) => {
+          const fileName = video.file_url.split("/").pop() ?? "";
+          const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+            .from("videos")
+            .createSignedUrl(fileName, 60 * 60);
+          if (signedUrlError || !signedUrlData?.signedUrl) {
+            console.error("Signed URL error for video:", video.id, signedUrlError);
+            return { ...video, signed_url: video.file_url };
+          }
+          return { ...video, signed_url: signedUrlData.signedUrl };
+        })
+      );
+      console.log("Fetched videos:", videosWithSignedUrls);
+      return videosWithSignedUrls;
     },
     enabled: !!user && !authLoading,
   });
@@ -98,20 +112,7 @@ export default function DashboardPage() {
       return;
     }
 
-    let shareUrl = video.file_url;
-    if (video.visibility === "unlisted") {
-      const fileName = video.file_url.split("/").pop() ?? "";
-      const expiration = parseInt(urlExpiration) * 60 * 60;
-      const { data, error } = await supabase.storage
-        .from("videos")
-        .createSignedUrl(fileName, expiration);
-      if (error) {
-        alert("Failed to create signed URL: " + error.message);
-        return;
-      }
-      shareUrl = data?.signedUrl;
-    }
-
+    const shareUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/embed/${video.id}`;
     const embed = `<iframe src="${process.env.NEXT_PUBLIC_SITE_URL}/embed/${video.id}" width="640" height="360" frameborder="0" allowfullscreen></iframe>`;
 
     setSelectedVideo(video);
@@ -182,7 +183,7 @@ export default function DashboardPage() {
                 >
                   <div className="flex flex-col md:flex-row md:items-center md:space-x-4">
                     <video
-                      src={video.file_url}
+                      src={video.signed_url || video.file_url}
                       className="w-24 h-16 object-cover rounded mr-4"
                       muted
                     />
@@ -234,7 +235,7 @@ export default function DashboardPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => window.open(video.file_url, "_blank")}
+                      onClick={() => window.open(`/embed/${video.id}`, "_blank")}
                       title="View"
                     >
                       <Eye className="w-5 h-5 text-blue-600" />
@@ -317,18 +318,6 @@ export default function DashboardPage() {
                 Copy Embed Code
               </Button>
             </div>
-            {selectedVideo?.visibility === "unlisted" && (
-              <div>
-                <Label>Link Expiration (hours)</Label>
-                <Input
-                  type="number"
-                  value={urlExpiration}
-                  onChange={(e) => setUrlExpiration(e.target.value)}
-                  min="1"
-                  className="mt-1"
-                />
-              </div>
-            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShareModalOpen(false)}>

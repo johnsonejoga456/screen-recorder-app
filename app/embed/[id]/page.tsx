@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabaseClient";
 import { notFound } from "next/navigation";
 import type { Metadata, NextPage } from "next";
+import CopyLinkButton from "@/components/CopyLinkButton";
 
 // Define the props type for the dynamic route
 type EmbedPageProps = {
@@ -9,7 +10,7 @@ type EmbedPageProps = {
 
 // SEO metadata
 export async function generateMetadata({ params }: EmbedPageProps): Promise<Metadata> {
-  const { id } = await params; // Await params to access id
+  const { id } = await params;
 
   const { data: video } = await supabase
     .from("videos")
@@ -24,7 +25,7 @@ export async function generateMetadata({ params }: EmbedPageProps): Promise<Meta
 
 // Main page component
 const EmbedPage: NextPage<EmbedPageProps> = async ({ params }) => {
-  const { id } = await params; // Await params to access id
+  const { id } = await params;
 
   const { data: video, error } = await supabase
     .from("videos")
@@ -48,12 +49,15 @@ const EmbedPage: NextPage<EmbedPageProps> = async ({ params }) => {
   // Generate a signed URL (expires in 1 hour)
   const { data: signedUrlData, error: signedUrlError } = await supabase.storage
     .from("videos")
-    .createSignedUrl(video.file_path, 60 * 60); // file_path is the path inside bucket
+    .createSignedUrl(video.file_path, 60 * 60);
 
   if (signedUrlError || !signedUrlData?.signedUrl) {
+    console.error("Signed URL error:", signedUrlError);
     notFound();
     return null;
   }
+
+  const shareUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/embed/${id}`;
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-black">
@@ -63,6 +67,9 @@ const EmbedPage: NextPage<EmbedPageProps> = async ({ params }) => {
         src={signedUrlData.signedUrl}
       />
       <p className="text-gray-300 mt-2">{video.title}</p>
+      <div className="mt-4">
+        <CopyLinkButton url={shareUrl} />
+      </div>
     </div>
   );
 };
